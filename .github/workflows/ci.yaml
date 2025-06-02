@@ -1,0 +1,130 @@
+name: CI Pipeline
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  check-image-and-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      frontend_changed: ${{ steps.frontend-changes.outputs.any_changed }}
+      backend_changed: ${{ steps.backend-changes.outputs.any_changed }}
+      frontend_image_exists: ${{ steps.check-frontend-image.outputs.image_exists }}
+      backend_image_exists: ${{ steps.check-backend-image.outputs.image_exists }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ vars.AWS_REGION }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Check Frontend Image Existence
+        id: check-frontend-image
+        continue-on-error: true
+        run: |
+          ECR_REGISTRY=${{ steps.login-ecr.outputs.registry }}
+          FRONTEND_ECR_REPO=${{ vars.FRONTEND_ECR_REPO }}
+          aws ecr describe-images --repository-name $FRONTEND_ECR_REPO --image-ids imageTag=latest || exit 1
+          echo "image_exists=true" >> $GITHUB_OUTPUT
+
+      - name: Check Backend Image Existence
+        id: check-backend-image
+        continue-on-error: true
+        run: |
+          ECR_REGISTRY=${{ steps.login-ecr.outputs.registry }}
+          BACKEND_ECR_REPO=${{ vars.BACKEND_ECR_REPO }}
+          aws ecr describe-images --repository-name $BACKEND_ECR_REPO --image-ids imageTag=latest || exit 1
+          echo "image_exists=true" >> $GITHUB_OUTPUT
+
+      - name: Check for Frontend changes
+        id: frontend-changes
+        uses: tj-actions/changed-files@v41
+        with:
+          files: |
+            FrontEnd/**
+
+      - name: Check for Backend changes
+        id: backend-changes
+        uses: tj-actions/changed-files@v41
+        with:
+          files: |
+            BackEnd/**
+
+  setup-and-deploy:
+    needs: check-image-and-changes
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4.1.1
+
+      - name: "Configure AWS Credentials"
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ vars.AWS_REGION }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+
+      - name: Create Frontend ECR Repository
+        env:
+          FRONTEND_ECR_REPO: ${{ vars.FRONTEND_ECR_REPO }}
+        run: |
+          aws ecr describe-repositories --repository-names ${{ env.FRONTEND_ECR_REPO }} || \
+          aws ecr create-repository --repository-name ${{ env.FRONTEND_ECR_REPO }}
+
+      - name: Create Backend ECR Repository
+        env:
+          BACKEND_ECR_REPO: ${{ vars.BACKEND_ECR_REPO }}
+        run: |
+          aws ecr describe-repositories --repository-names ${{ env.BACKEND_ECR_REPO }} || \
+          aws ecr create-repository --repository-name ${{ env.BACKEND_ECR_REPO }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build and push FrontEnd image
+        if: >
+          needs.check-image-and-changes.outputs.frontend_image_exists != 'true' || 
+          needs.check-image-and-changes.outputs.frontend_changed == 'true'
+        uses: docker/build-push-action@v6.13.0
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+          FRONTEND_ECR_REPO: ${{ vars.FRONTEND_ECR_REPO }}
+        with:
+          context: ./FrontEnd
+          push: true
+          tags: |
+            ${{ env.ECR_REGISTRY }}/${{ env.FRONTEND_ECR_REPO }}:latest
+            ${{ env.ECR_REGISTRY }}/${{ env.FRONTEND_ECR_REPO }}:${{ env.IMAGE_TAG }}
+
+      - name: Build and push BackEnd image
+        if: >
+          needs.check-image-and-changes.outputs.backend_image_exists != 'true' || 
+          needs.check-image-and-changes.outputs.backend_changed == 'true'
+        uses: docker/build-push-action@v6.13.0
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+          BACKEND_ECR_REPO: ${{ vars.BACKEND_ECR_REPO }}
+        with:
+          context: ./BackEnd
+          push: true
+          tags: |
+            ${{ env.ECR_REGISTRY }}/${{ env.BACKEND_ECR_REPO }}:latest
+            ${{ env.ECR_REGISTRY }}/${{ env.BACKEND_ECR_REPO }}:${{ env.IMAGE_TAG }}

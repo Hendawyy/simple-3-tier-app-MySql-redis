@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-env
+  namespace: 3-tier-app-eks
+data:
+  MYSQL_HOST: "mysql"
+  MYSQL_PORT: "3306"
+  MYSQL_USER: "admin"
+  MYSQL_DATABASE: "mydb"
+  REDIS_HOST: "redis"
+  REDIS_PORT: "6379"

@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  namespace: 3-tier-app-eks
+  name: backend-env
+data:
+  MYSQL_HOST: "mysql"
+  MYSQL_PORT: "3306"
+  MYSQL_USER: "root"
+  MYSQL_PASSWORD: "password"
+  MYSQL_DATABASE: "counterdb"
+  REDIS_HOST: "redis"
+  REDIS_PORT: "6379"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  namespace: 3-tier-app-eks
+  name: backend-url
+data:
+  BACKEND_URL: "http://backend-service:3000/api/increment"
