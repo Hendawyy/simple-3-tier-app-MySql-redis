@@ -15,14 +15,22 @@ spec:
         app: redis
     spec:
       containers:
-        - name: redis
-          image: redis:7.0
-          ports:
-            - containerPort: 6379
-          volumeMounts:
-            - name: redis-persistent-storage
-              mountPath: /data
-          command: ["redis-server", "--appendonly", "yes"]
+      - name: redis
+        image: redis:7.0
+        ports:
+          - containerPort: 6379
+        env:
+          - name: REDIS_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: redis-secret
+                key: password
+        volumeMounts:
+          - name: redis-persistent-storage
+            mountPath: /data
+        command: ["/bin/sh", "-c"]
+        args:
+          - redis-server --appendonly yes --requirepass "$REDIS_PASSWORD"
   volumeClaimTemplates:
     - metadata:
         name: redis-persistent-storage

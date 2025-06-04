@@ -57,6 +57,11 @@ spec:
             configMapKeyRef:
               name: backend-env
               key: REDIS_PORT
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: redis-secret
+              key: password
         volumeMounts:
         - name: backend-storage
           mountPath: /app/data
